@@ -1,0 +1,8 @@
+# Ignore environment and key files
+.env
+*.json
+credentials/
+__pycache__/
+venv/
+*.pyc
+.DS_Store

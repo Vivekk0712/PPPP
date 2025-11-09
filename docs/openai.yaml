@@ -1,0 +1,77 @@
+openapi: 3.0.0
+info:
+  title: AuthApp API
+  version: 1.0.0
+  description: API for Firebase-based authentication system with Phone, Google, and Email/Password.
+
+servers:
+  - url: http://localhost:4000
+
+paths:
+  /api/sessionLogin:
+    post:
+      summary: Exchange Firebase ID token for server session cookie
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - idToken
+              properties:
+                idToken:
+                  type: string
+      responses:
+        '200':
+          description: Session created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  uid:
+                    type: string
+        '401':
+          description: Invalid ID token
+
+  /api/sessionLogout:
+    post:
+      summary: Clear user session cookie
+      responses:
+        '200':
+          description: Session cleared
+        '401':
+          description: Not logged in
+
+  /api/me:
+    get:
+      summary: Get current authenticated user profile
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uid:
+                    type: string
+                  email:
+                    type: string
+                    nullable: true
+                  phoneNumber:
+                    type: string
+                    nullable: true
+                  displayName:
+                    type: string
+                  photoURL:
+                    type: string
+                  providers:
+                    type: array
+                    items:
+                      type: string
+        '401':
+          description: Unauthorized
