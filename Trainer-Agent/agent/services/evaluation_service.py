@@ -419,17 +419,21 @@ with open('labels.json') as f:
 
 # Load model
 def load_model():
-    from torchvision.models import {model_architecture}
-    model = {model_architecture}()
+    import torch
+    import torch.nn as nn
+    from torchvision import models
+    
+    # Load the model architecture
+    model = models.{model_architecture}(weights=None)
     
     # Modify final layer for number of classes
     if hasattr(model, 'fc'):
-        model.fc = torch.nn.Linear(model.fc.in_features, {num_classes})
+        model.fc = nn.Linear(model.fc.in_features, {num_classes})
     elif hasattr(model, 'classifier'):
-        if isinstance(model.classifier, torch.nn.Sequential):
-            model.classifier[-1] = torch.nn.Linear(model.classifier[-1].in_features, {num_classes})
+        if isinstance(model.classifier, nn.Sequential):
+            model.classifier[-1] = nn.Linear(model.classifier[-1].in_features, {num_classes})
         else:
-            model.classifier = torch.nn.Linear(model.classifier.in_features, {num_classes})
+            model.classifier = nn.Linear(model.classifier.in_features, {num_classes})
     
     model.load_state_dict(torch.load('model.pth', map_location='cpu'))
     model.eval()
