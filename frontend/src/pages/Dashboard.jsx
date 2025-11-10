@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { sessionLogout } from '../services/api';
 import { Card, Button, Form, Tabs, Tab, Container, Row, Col } from 'react-bootstrap';
 import { motion } from 'framer-motion';
@@ -8,17 +8,45 @@ import {
   House,
   Cpu,
   Image as ImageIcon,
-  BoxArrowRight
+  BoxArrowRight,
+  ShieldLock
 } from 'react-bootstrap-icons';
 import ChatBot from '../components/ChatBot';
 import MLProjectsPage from './MLProjectsPage';
 import ModelTester from '../components/ModelTester';
+import AdminDashboard from './AdminDashboard';
 
 const Dashboard = ({ user }) => {
   const [showProfile, setShowProfile] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [isChatFullscreen, setIsChatFullscreen] = useState(false);
   const [activeTab, setActiveTab] = useState('home');
+  const [isAdmin, setIsAdmin] = useState(true); // Temporarily set to true for debugging
+  
+  // Check if user is admin
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      try {
+        // Try to fetch admin stats - if it succeeds, user is admin
+        const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+        const response = await fetch(`${API_BASE}/api/admin/stats`, {
+          credentials: 'include'
+        });
+        console.log('Admin check response:', response.status, response.ok);
+        setIsAdmin(response.ok);
+      } catch (error) {
+        console.error('Admin check error:', error);
+        setIsAdmin(false);
+      }
+    };
+    checkAdminStatus();
+  }, []);
+  
+  // Temporary: Show admin tab for debugging
+  // Remove this after confirming admin role works
+  useEffect(() => {
+    console.log('Is Admin:', isAdmin);
+  }, [isAdmin]);
   
   // Load profile from localStorage or use Firebase user data as fallback
   const [profileData, setProfileData] = useState(() => {
@@ -398,6 +426,26 @@ const Dashboard = ({ user }) => {
                 <ModelTester />
               </motion.div>
             </Tab>
+
+            {isAdmin && (
+              <Tab 
+                eventKey="admin" 
+                title={
+                  <span className="d-flex align-items-center gap-2">
+                    <ShieldLock size={18} />
+                    <span>Admin</span>
+                  </span>
+                }
+              >
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <AdminDashboard />
+                </motion.div>
+              </Tab>
+            )}
           </Tabs>
         </motion.div>
       </Container>

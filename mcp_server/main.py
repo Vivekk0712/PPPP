@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: str
     PLANNER_AGENT_URL: str = "http://127.0.0.1:8001"
     DATASET_AGENT_URL: str = "http://127.0.0.1:8002"
+    TRAINING_AGENT_URL: str = "http://127.0.0.1:8003"
+    GOOGLE_APPLICATION_CREDENTIALS: str = ""
+    GCP_BUCKET_NAME: str = ""
 
     class Config:
         env_file = ".env"
@@ -281,37 +284,129 @@ async def get_project_logs(project_id: str, user_id: str):
 @app.get("/api/ml/projects/{project_id}/download")
 async def download_model(project_id: str, user_id: str):
     """
-    Download trained model bundle
+    Download trained model bundle from GCP
     """
     logger.info(f"Download request for project {project_id}")
     
     try:
         from supabase_client import get_supabase_client
-        from fastapi.responses import FileResponse
+        from fastapi.responses import StreamingResponse
+        from google.cloud import storage
+        import io
         
         supabase = get_supabase_client()
         
         # Convert Firebase UID to User UUID
         user_uuid = get_user_uuid_from_firebase_uid(user_id)
         
-        # Verify project and get model info
-        project = supabase.table("projects").select("*").eq("id", project_id).eq("user_id", user_uuid).execute()
+        # Check if user is admin
+        user = supabase.table("users").select("is_admin").eq("id", user_uuid).execute()
+        is_admin = user.data and user.data[0].get("is_admin", False)
+        
+        # Verify project and get bundle URL
+        if is_admin:
+            # Admin can download any project
+            project = supabase.table("projects").select("*").eq("id", project_id).execute()
+        else:
+            # Regular user can only download their own projects
+            project = supabase.table("projects").select("*").eq("id", project_id).eq("user_id", user_uuid).execute()
+        
         if not project.data:
             raise HTTPException(status_code=404, detail="Project not found")
         
         project_data = project.data[0]
         if project_data["status"] not in ["completed", "export_ready"]:
-            raise HTTPException(status_code=400, detail="Model not ready for download")
+            raise HTTPException(status_code=400, detail="Model not ready for download. Current status: " + project_data["status"])
         
-        # TODO: Implement actual model download from GCP
-        # For now, return a placeholder response
-        raise HTTPException(status_code=501, detail="Model download not yet implemented")
+        # Get model from models table
+        model = supabase.table("models").select("*").eq("project_id", project_id).execute()
+        
+        if not model.data:
+            raise HTTPException(status_code=404, detail="No trained model found for this project")
+        
+        model_data = model.data[0]
+        model_url = model_data.get("gcs_url")
+        
+        if not model_url:
+            raise HTTPException(status_code=404, detail="Model GCS URL not found")
+        
+        # Parse GCS URL (format: gs://bucket-name/path/to/file.pth)
+        if not model_url.startswith("gs://"):
+            raise HTTPException(status_code=400, detail="Invalid model URL format")
+        
+        # Extract bucket name
+        gcs_path = model_url.replace("gs://", "")
+        bucket_name = gcs_path.split("/")[0]
+        
+        # Try to find bundle first (in exports folder)
+        project_name_clean = project_data.get('name', 'model').replace(' ', '_')
+        bundle_path = f"exports/{project_name_clean}_bundle.zip"
+        
+        logger.info(f"Checking for bundle at: {bundle_path}")
+        
+        # Download from GCP with explicit credentials
+        gcp_credentials_path = settings.GOOGLE_APPLICATION_CREDENTIALS
+        logger.info(f"GCP credentials path: {gcp_credentials_path}")
+        
+        if gcp_credentials_path and gcp_credentials_path.strip():
+            logger.info(f"Using credentials from settings: {gcp_credentials_path}")
+            
+            if os.path.exists(gcp_credentials_path):
+                logger.info("Credentials file found, using explicit authentication")
+                storage_client = storage.Client.from_service_account_json(gcp_credentials_path)
+            else:
+                logger.error(f"Credentials file not found at: {gcp_credentials_path}")
+                raise HTTPException(status_code=500, detail=f"GCP credentials file not found at: {gcp_credentials_path}")
+        else:
+            logger.error("GOOGLE_APPLICATION_CREDENTIALS not set in .env file")
+            raise HTTPException(status_code=500, detail="GCP credentials not configured in .env file")
+        
+        bucket = storage_client.bucket(bucket_name)
+        
+        # Check if bundle exists
+        bundle_blob = bucket.blob(bundle_path)
+        if bundle_blob.exists():
+            logger.info(f"Bundle found! Downloading: {bundle_path}")
+            blob = bundle_blob
+            filename = f"{project_name_clean}_bundle.zip"
+            content_type = "application/zip"
+        else:
+            # Fallback to raw model file
+            logger.info(f"Bundle not found, downloading raw model")
+            model_blob_path = "/".join(gcs_path.split("/")[1:])
+            blob = bucket.blob(model_blob_path)
+            
+            if not blob.exists():
+                raise HTTPException(status_code=404, detail="Model file not found in GCP storage")
+            
+            filename = blob.name.split("/")[-1]
+            if not filename.endswith('.pth'):
+                filename = f"{project_name_clean}_model.pth"
+            content_type = "application/octet-stream"
+        
+        # Stream the file
+        file_stream = io.BytesIO()
+        blob.download_to_file(file_stream)
+        file_stream.seek(0)
+        
+        logger.info(f"Successfully downloaded: {filename}")
+        
+        return StreamingResponse(
+            file_stream,
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            }
+        )
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error downloading model: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        error_trace = traceback.format_exc()
+        logger.error(f"Full traceback:\n{error_trace}")
+        raise HTTPException(status_code=500, detail=f"Download failed: {str(e)}")
 
 @app.post("/api/ml/projects/{project_id}/test")
 async def test_model(project_id: str):
@@ -324,6 +419,159 @@ async def test_model(project_id: str):
         # TODO: Implement model testing
         # This would load the model and run inference
         raise HTTPException(status_code=501, detail="Model testing not yet implemented")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error testing model: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Admin Endpoints
+@app.get("/api/admin/stats")
+async def get_admin_stats(user_id: str):
+    """
+    Get overall system statistics for admin dashboard
+    """
+    logger.info(f"Admin stats request from user {user_id}")
+    
+    try:
+        # Check if user is admin
+        from supabase_client import get_supabase_client
+        supabase = get_supabase_client()
+        
+        # Convert Firebase UID to User UUID and check admin status
+        user_uuid = get_user_uuid_from_firebase_uid(user_id)
+        user = supabase.table("users").select("is_admin").eq("id", user_uuid).execute()
+        
+        if not user.data or not user.data[0].get("is_admin", False):
+            raise HTTPException(status_code=403, detail="Access denied. Admin privileges required.")
+        
+        # Get counts
+        users_count = supabase.table("users").select("id", count="exact").execute()
+        projects_count = supabase.table("projects").select("id", count="exact").execute()
+        datasets_count = supabase.table("datasets").select("id", count="exact").execute()
+        models_count = supabase.table("models").select("id", count="exact").execute()
+        
+        # Get status breakdown
+        status_breakdown = {}
+        statuses = ["draft", "pending_dataset", "pending_training", "pending_evaluation", "completed", "failed"]
+        for status in statuses:
+            count = supabase.table("projects").select("id", count="exact").eq("status", status).execute()
+            status_breakdown[status] = count.count
+        
+        # Get recent activity (last 24 hours)
+        from datetime import datetime, timedelta
+        yesterday = (datetime.utcnow() - timedelta(days=1)).isoformat()
+        recent_projects = supabase.table("projects").select("id", count="exact").gte("created_at", yesterday).execute()
+        
+        return {
+            "total_users": users_count.count,
+            "total_projects": projects_count.count,
+            "total_datasets": datasets_count.count,
+            "total_models": models_count.count,
+            "status_breakdown": status_breakdown,
+            "recent_projects_24h": recent_projects.count
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching admin stats: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/admin/users")
+async def get_all_users(user_id: str):
+    """
+    Get all users with their project counts
+    """
+    logger.info(f"Admin users request from user {user_id}")
+    
+    try:
+        from supabase_client import get_supabase_client
+        supabase = get_supabase_client()
+        
+        # Check if user is admin
+        user_uuid = get_user_uuid_from_firebase_uid(user_id)
+        user = supabase.table("users").select("is_admin").eq("id", user_uuid).execute()
+        
+        if not user.data or not user.data[0].get("is_admin", False):
+            raise HTTPException(status_code=403, detail="Access denied. Admin privileges required.")
+        
+        # Get all users
+        users = supabase.table("users").select("*").order("created_at", desc=True).execute()
+        
+        # Get project counts for each user
+        users_with_counts = []
+        for user in users.data:
+            projects = supabase.table("projects").select("id", count="exact").eq("user_id", user["id"]).execute()
+            users_with_counts.append({
+                **user,
+                "project_count": projects.count
+            })
+        
+        return {"users": users_with_counts}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching users: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/admin/projects")
+async def get_all_projects(user_id: str, limit: int = 50):
+    """
+    Get all projects across all users
+    """
+    logger.info(f"Admin projects request from user {user_id}")
+    
+    try:
+        from supabase_client import get_supabase_client
+        supabase = get_supabase_client()
+        
+        # Check if user is admin
+        user_uuid = get_user_uuid_from_firebase_uid(user_id)
+        user = supabase.table("users").select("is_admin").eq("id", user_uuid).execute()
+        
+        if not user.data or not user.data[0].get("is_admin", False):
+            raise HTTPException(status_code=403, detail="Access denied. Admin privileges required.")
+        
+        # Get all projects with user info
+        projects = supabase.table("projects").select("*, users(firebase_uid, email)").order("created_at", desc=True).limit(limit).execute()
+        
+        return {"projects": projects.data}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching projects: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/admin/logs")
+async def get_all_logs(user_id: str, limit: int = 100):
+    """
+    Get recent agent logs across all projects
+    """
+    logger.info(f"Admin logs request from user {user_id}")
+    
+    try:
+        from supabase_client import get_supabase_client
+        supabase = get_supabase_client()
+        
+        # Check if user is admin
+        user_uuid = get_user_uuid_from_firebase_uid(user_id)
+        user = supabase.table("users").select("is_admin").eq("id", user_uuid).execute()
+        
+        if not user.data or not user.data[0].get("is_admin", False):
+            raise HTTPException(status_code=403, detail="Access denied. Admin privileges required.")
+        
+        # Get recent logs
+        logs = supabase.table("agent_logs").select("*, projects(name)").order("created_at", desc=True).limit(limit).execute()
+        
+        return {"logs": logs.data}
         
     except HTTPException:
         raise

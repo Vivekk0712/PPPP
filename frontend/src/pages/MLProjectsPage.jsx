@@ -165,15 +165,32 @@ const MLProjectsPage = ({ user }) => {
               borderRadius: '20px',
               padding: '30px',
               boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-              minHeight: '600px'
+              minHeight: '600px',
+              position: 'relative'
             }}>
               <div className="d-flex justify-content-between align-items-center mb-4">
-                <h5 className="fw-bold mb-0" style={{ color: '#1f2937' }}>
-                  Your Projects
-                </h5>
-                <Badge bg="primary" style={{ fontSize: '0.9em', padding: '8px 16px' }}>
-                  {refreshTrigger} Total
-                </Badge>
+                <div>
+                  <h5 className="fw-bold mb-1" style={{ color: '#1f2937' }}>
+                    Your Projects
+                  </h5>
+                  <small style={{ color: '#6b7280' }}>
+                    Completed projects are ready for download
+                  </small>
+                </div>
+                <div className="d-flex align-items-center gap-2">
+                  <small style={{ color: '#6b7280', fontSize: '0.85em' }}>
+                    Auto-refreshing
+                  </small>
+                  <div 
+                    style={{
+                      width: '8px',
+                      height: '8px',
+                      borderRadius: '50%',
+                      background: '#10b981',
+                      animation: 'blink 2s infinite'
+                    }}
+                  />
+                </div>
               </div>
               
               <ProjectList
@@ -262,6 +279,30 @@ const MLProjectsPage = ({ user }) => {
                         </strong>
                       </div>
                     )}
+
+                    {(selectedProject.status === 'completed' || selectedProject.status === 'export_ready') && (
+                      <div className="mb-3 p-3" style={{ 
+                        background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+                        borderRadius: '12px',
+                        border: '2px solid #93c5fd'
+                      }}>
+                        <small className="text-muted d-block mb-2">📦 Model Bundle Ready</small>
+                        <div style={{ fontSize: '0.9em', color: '#1e40af' }}>
+                          <div className="mb-2">
+                            <strong>Includes:</strong>
+                            <ul className="mb-0 mt-1" style={{ paddingLeft: '20px' }}>
+                              <li>model.pth - Trained model weights</li>
+                              <li>predict.py - Inference script</li>
+                              <li>labels.json - Class mappings</li>
+                              <li>README.txt - Usage instructions</li>
+                            </ul>
+                          </div>
+                          <small className="text-muted">
+                            Click "Download Model" to get the complete bundle
+                          </small>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </Tab>
                 
@@ -320,6 +361,15 @@ const MLProjectsPage = ({ user }) => {
           }
           50% {
             box-shadow: 0 0 30px rgba(59,130,246,0.8);
+          }
+        }
+        
+        @keyframes blink {
+          0%, 100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.3;
           }
         }
       `}</style>

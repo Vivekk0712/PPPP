@@ -301,6 +301,7 @@ async def start_dataset_job(job: DatasetJobRequest):
         # Record in Supabase datasets table
         log_to_supabase(project_id, "Recording dataset metadata in Supabase", "info")
         print(f"📝 Storing dataset info in Supabase...")
+        dataset_stored = False
         try:
             dataset_result = supabase.table("datasets").insert({
                 "project_id": project_id,
@@ -311,23 +312,49 @@ async def start_dataset_job(job: DatasetJobRequest):
                 "created_at": datetime.utcnow().isoformat()
             }).execute()
             print(f"✅ Dataset info stored successfully")
+            dataset_stored = True
         except Exception as dataset_error:
             print(f"❌ Failed to store dataset info: {dataset_error}")
             import traceback
             print(traceback.format_exc())
+            log_to_supabase(project_id, f"Failed to store dataset info: {str(dataset_error)}", "error")
             raise
         
-        # Update project status
-        print(f"✅ Updating project status to pending_training...")
-        try:
-            update_result = supabase.table("projects").update({
-                "status": "pending_training",
-                "updated_at": datetime.utcnow().isoformat()
-            }).eq("id", project_id).execute()
-            print(f"✅ Project status updated successfully: {update_result}")
-        except Exception as update_error:
-            print(f"❌ Failed to update project status: {update_error}")
-            raise
+        # Update project status - this is critical, retry if needed
+        print(f"📝 Updating project status to pending_training...")
+        status_updated = False
+        max_retries = 3
+        
+        for attempt in range(max_retries):
+            try:
+                update_result = supabase.table("projects").update({
+                    "status": "pending_training",
+                    "updated_at": datetime.utcnow().isoformat()
+                }).eq("id", project_id).execute()
+                print(f"✅ Project status updated successfully (attempt {attempt + 1})")
+                status_updated = True
+                break
+            except Exception as update_error:
+                print(f"⚠️ Failed to update project status (attempt {attempt + 1}/{max_retries}): {update_error}")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(2)  # Wait 2 seconds before retry
+                else:
+                    # Last attempt failed
+                    print(f"❌ All {max_retries} attempts to update status failed")
+                    log_to_supabase(project_id, f"Dataset uploaded but status update failed: {str(update_error)}", "warning")
+                    # Don't raise - dataset is uploaded, we can manually fix status later
+                    send_chat_message(user_id, 
+                        f"⚠️ Dataset uploaded successfully but status update failed.\n"
+                        f"Dataset: {dataset_ref}\n"
+                        f"Size: {file_size_gb:.2f} GB\n"
+                        f"Please contact support to update project status.")
+        
+        if not status_updated:
+            # Dataset is uploaded but status wasn't updated - this is not a complete failure
+            print(f"⚠️ Dataset uploaded successfully but status remains 'pending_dataset'")
+            print(f"   Manual intervention may be needed to update status to 'pending_training'")
+            # Don't raise exception - the dataset work is done
         
         log_to_supabase(project_id, "Dataset agent completed successfully", "info")
         print(f"✅ Dataset agent completed successfully!")
@@ -357,10 +384,38 @@ async def start_dataset_job(job: DatasetJobRequest):
         print(f"Full traceback:\n{error_details}")
         
         log_to_supabase(project_id, f"Error: {str(e)}", "error")
-        supabase.table("projects").update({
-            "status": "failed",
-            "updated_at": datetime.utcnow().isoformat()
-        }).eq("id", project_id).execute()
+        
+        # Check if dataset was already uploaded before marking as failed
+        try:
+            dataset_check = supabase.table("datasets").select("*").eq("project_id", project_id).execute()
+            if dataset_check.data:
+                # Dataset exists, don't mark as failed
+                print(f"⚠️ Error occurred but dataset was uploaded. Not marking as failed.")
+                log_to_supabase(project_id, "Dataset uploaded but error in post-processing", "warning")
+                # Return partial success
+                dataset = dataset_check.data[0]
+                return {
+                    "success": True,
+                    "dataset_name": dataset['name'],
+                    "gcs_url": dataset['gcs_url'],
+                    "size": dataset['size'],
+                    "warning": "Dataset uploaded but status update may have failed"
+                }
+            else:
+                # No dataset, this is a real failure
+                supabase.table("projects").update({
+                    "status": "failed",
+                    "updated_at": datetime.utcnow().isoformat()
+                }).eq("id", project_id).execute()
+                print(f"❌ Marked project as failed (no dataset found)")
+        except Exception as check_error:
+            # If we can't check, mark as failed to be safe
+            print(f"⚠️ Could not check dataset status: {check_error}")
+            supabase.table("projects").update({
+                "status": "failed",
+                "updated_at": datetime.utcnow().isoformat()
+            }).eq("id", project_id).execute()
+        
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -514,28 +569,64 @@ def process_project_sync(project_id: str):
         
         # Record in Supabase
         log_to_supabase(project_id, "Recording dataset metadata in Supabase", "info")
-        supabase.table("datasets").insert({
-            "project_id": project_id,
-            "name": dataset_ref,
-            "gcs_url": gcs_url,
-            "size": f"{file_size_gb:.2f} GB",
-            "source": "kaggle",
-            "created_at": datetime.utcnow().isoformat()
-        }).execute()
-        
-        # Update project status
-        print(f"[AUTO] 📝 Updating project status to pending_training...")
+        print(f"[AUTO] 📝 Storing dataset info in Supabase...")
+        dataset_stored = False
         try:
-            update_result = supabase.table("projects").update({
-                "status": "pending_training",
-                "updated_at": datetime.utcnow().isoformat()
-            }).eq("id", project_id).execute()
-            print(f"[AUTO] ✅ Status updated successfully: {update_result.data}")
-        except Exception as status_error:
-            print(f"[AUTO] ❌ Failed to update status: {status_error}")
+            supabase.table("datasets").insert({
+                "project_id": project_id,
+                "name": dataset_ref,
+                "gcs_url": gcs_url,
+                "size": f"{file_size_gb:.2f} GB",
+                "source": "kaggle",
+                "created_at": datetime.utcnow().isoformat()
+            }).execute()
+            print(f"[AUTO] ✅ Dataset info stored successfully")
+            dataset_stored = True
+        except Exception as dataset_error:
+            print(f"[AUTO] ❌ Failed to store dataset info: {dataset_error}")
             import traceback
             print(f"[AUTO] Traceback: {traceback.format_exc()}")
+            log_to_supabase(project_id, f"Failed to store dataset info: {str(dataset_error)}", "error")
             raise
+        
+        # Update project status - retry logic for robustness
+        print(f"[AUTO] 📝 Updating project status to pending_training...")
+        status_updated = False
+        max_retries = 3
+        
+        for attempt in range(max_retries):
+            try:
+                update_result = supabase.table("projects").update({
+                    "status": "pending_training",
+                    "updated_at": datetime.utcnow().isoformat()
+                }).eq("id", project_id).execute()
+                print(f"[AUTO] ✅ Status updated successfully (attempt {attempt + 1}): {update_result.data}")
+                status_updated = True
+                break
+            except Exception as status_error:
+                print(f"[AUTO] ⚠️ Failed to update status (attempt {attempt + 1}/{max_retries}): {status_error}")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(2)  # Wait 2 seconds before retry
+                else:
+                    # Last attempt failed
+                    print(f"[AUTO] ❌ All {max_retries} attempts to update status failed")
+                    import traceback
+                    print(f"[AUTO] Traceback: {traceback.format_exc()}")
+                    log_to_supabase(project_id, f"Dataset uploaded but status update failed: {str(status_error)}", "warning")
+                    # Don't raise - dataset is uploaded successfully
+                    send_chat_message(user_id, 
+                        f"⚠️ Dataset uploaded successfully but status update failed.\n"
+                        f"Dataset: {dataset_ref}\n"
+                        f"Size: {file_size_gb:.2f} GB\n"
+                        f"Please contact support to update project status.")
+        
+        if not status_updated:
+            # Dataset is uploaded but status wasn't updated
+            print(f"[AUTO] ⚠️ Dataset uploaded successfully but status remains 'pending_dataset'")
+            print(f"[AUTO]    Manual intervention may be needed")
+            # Don't raise exception - the dataset work is done
+            return
         
         log_to_supabase(project_id, "Auto-processing completed successfully", "info")
         send_chat_message(user_id, 
@@ -552,12 +643,34 @@ def process_project_sync(project_id: str):
             os.remove(kaggle_json_path)
         
     except Exception as e:
-        log_to_supabase(project_id, f"Auto-processing error: {str(e)}", "error")
-        supabase.table("projects").update({
-            "status": "failed",
-            "updated_at": datetime.utcnow().isoformat()
-        }).eq("id", project_id).execute()
+        import traceback
+        error_details = traceback.format_exc()
         print(f"[AUTO] ❌ Error processing project {project_id}: {e}")
+        print(f"[AUTO] Traceback:\n{error_details}")
+        
+        log_to_supabase(project_id, f"Auto-processing error: {str(e)}", "error")
+        
+        # Check if dataset was already uploaded before marking as failed
+        try:
+            dataset_check = supabase.table("datasets").select("*").eq("project_id", project_id).execute()
+            if dataset_check.data:
+                # Dataset exists, don't mark as failed
+                print(f"[AUTO] ⚠️ Error occurred but dataset was uploaded. Not marking as failed.")
+                log_to_supabase(project_id, "Dataset uploaded but error in post-processing", "warning")
+            else:
+                # No dataset, this is a real failure
+                supabase.table("projects").update({
+                    "status": "failed",
+                    "updated_at": datetime.utcnow().isoformat()
+                }).eq("id", project_id).execute()
+                print(f"[AUTO] ❌ Marked project as failed (no dataset found)")
+        except Exception as check_error:
+            # If we can't check, mark as failed to be safe
+            print(f"[AUTO] ⚠️ Could not check dataset status: {check_error}")
+            supabase.table("projects").update({
+                "status": "failed",
+                "updated_at": datetime.utcnow().isoformat()
+            }).eq("id", project_id).execute()
 
 
 def poll_pending_projects():

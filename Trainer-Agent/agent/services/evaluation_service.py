@@ -93,8 +93,9 @@ async def execute_evaluation(project_id: str) -> Dict[str, Any]:
         project_metadata = project.get("metadata", {})
         model_architecture = project_metadata.get("preferred_model", "resnet18")
         
-        # Step 2: Download model and dataset
-        temp_dir = f"/tmp/evaluation_{project_id}"
+        # Step 2: Download model and dataset (Windows compatible)
+        import tempfile
+        temp_dir = os.path.join(tempfile.gettempdir(), f"evaluation_{project_id}")
         os.makedirs(temp_dir, exist_ok=True)
         temp_files.append(temp_dir)
         
@@ -386,7 +387,8 @@ def create_user_bundle(
     Returns:
         GCS URL of the uploaded bundle
     """
-    export_dir = f"/tmp/export_{project_id}"
+    import tempfile
+    export_dir = os.path.join(tempfile.gettempdir(), f"export_{project_id}")
     os.makedirs(export_dir, exist_ok=True)
     
     # 1. Copy model
@@ -516,7 +518,7 @@ python predict.py test_image.jpg
     
     # 5. Create zip file
     zip_filename = f"{project_name.replace(' ', '_')}_bundle.zip"
-    zip_path = f"/tmp/{zip_filename}"
+    zip_path = os.path.join(tempfile.gettempdir(), zip_filename)
     
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
         for root, _, files in os.walk(export_dir):

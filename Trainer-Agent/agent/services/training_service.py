@@ -120,8 +120,9 @@ async def execute_training(project_id: str) -> Dict[str, Any]:
             "info"
         )
         
-        # Create temp directory for dataset
-        temp_dir = f"/tmp/training_{project_id}"
+        # Create temp directory for dataset (Windows compatible)
+        import tempfile
+        temp_dir = os.path.join(tempfile.gettempdir(), f"training_{project_id}")
         os.makedirs(temp_dir, exist_ok=True)
         temp_files.append(temp_dir)
         

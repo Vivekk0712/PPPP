@@ -3,6 +3,7 @@ uvicorn
 httpx
 supabase
 google-generativeai
+google-cloud-storage
 python-dotenv
 pydantic>=2.0.0
 pydantic-settings

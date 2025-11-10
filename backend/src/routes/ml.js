@@ -112,13 +112,96 @@ router.get('/ml/projects/:projectId/download', verifySession, async (req, res) =
     });
 
     // Forward the stream to client
-    res.setHeader('Content-Type', mcpResponse.headers['content-type']);
-    res.setHeader('Content-Disposition', mcpResponse.headers['content-disposition']);
+    res.setHeader('Content-Type', mcpResponse.headers['content-type'] || 'application/zip');
+    res.setHeader('Content-Disposition', mcpResponse.headers['content-disposition'] || 'attachment; filename=model.zip');
     mcpResponse.data.pipe(res);
   } catch (error) {
     console.error('Error downloading model:', error.message);
-    res.status(500).json({ 
-      error: 'Failed to download model',
+    
+    // Don't try to JSON.stringify the error response if it's a stream
+    const errorMessage = error.response?.status === 404 
+      ? 'Model not found or not ready for download'
+      : error.response?.status === 403
+      ? 'Access denied'
+      : 'Failed to download model';
+    
+    res.status(error.response?.status || 500).json({ 
+      error: errorMessage,
+      details: error.message 
+    });
+  }
+});
+
+// Admin endpoints
+router.get('/admin/stats', verifySession, async (req, res) => {
+  try {
+    const firebaseUid = req.user.uid;
+    
+    const mcpResponse = await axios.get(`${MCP_SERVER_URL}/api/admin/stats`, {
+      params: { user_id: firebaseUid }
+    });
+    
+    res.json(mcpResponse.data);
+  } catch (error) {
+    console.error('Error fetching admin stats:', error.message);
+    res.status(error.response?.status || 500).json({ 
+      error: 'Failed to fetch admin stats',
+      details: error.response?.data || error.message 
+    });
+  }
+});
+
+router.get('/admin/users', verifySession, async (req, res) => {
+  try {
+    const firebaseUid = req.user.uid;
+    
+    const mcpResponse = await axios.get(`${MCP_SERVER_URL}/api/admin/users`, {
+      params: { user_id: firebaseUid }
+    });
+    
+    res.json(mcpResponse.data);
+  } catch (error) {
+    console.error('Error fetching users:', error.message);
+    res.status(error.response?.status || 500).json({ 
+      error: 'Failed to fetch users',
+      details: error.response?.data || error.message 
+    });
+  }
+});
+
+router.get('/admin/projects', verifySession, async (req, res) => {
+  try {
+    const firebaseUid = req.user.uid;
+    const limit = req.query.limit || 50;
+    
+    const mcpResponse = await axios.get(`${MCP_SERVER_URL}/api/admin/projects`, {
+      params: { user_id: firebaseUid, limit }
+    });
+    
+    res.json(mcpResponse.data);
+  } catch (error) {
+    console.error('Error fetching projects:', error.message);
+    res.status(error.response?.status || 500).json({ 
+      error: 'Failed to fetch projects',
+      details: error.response?.data || error.message 
+    });
+  }
+});
+
+router.get('/admin/logs', verifySession, async (req, res) => {
+  try {
+    const firebaseUid = req.user.uid;
+    const limit = req.query.limit || 100;
+    
+    const mcpResponse = await axios.get(`${MCP_SERVER_URL}/api/admin/logs`, {
+      params: { user_id: firebaseUid, limit }
+    });
+    
+    res.json(mcpResponse.data);
+  } catch (error) {
+    console.error('Error fetching logs:', error.message);
+    res.status(error.response?.status || 500).json({ 
+      error: 'Failed to fetch logs',
       details: error.response?.data || error.message 
     });
   }

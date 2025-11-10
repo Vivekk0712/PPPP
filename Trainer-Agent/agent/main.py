@@ -273,7 +273,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=8000,
+        port=8003,  # Training Agent port (changed from 8000 to avoid conflict with MCP Server)
         reload=True,
         log_level=settings.log_level.lower()
     )
