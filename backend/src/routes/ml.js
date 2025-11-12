@@ -1,9 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
+const multer = require('multer');
 const verifySession = require('../middleware/verifySession');
 
 const MCP_SERVER_URL = process.env.MCP_SERVER_URL || 'http://127.0.0.1:8000';
+
+// Configure multer for file uploads
+const upload = multer({ storage: multer.memoryStorage() });
 
 // Create ML project via chat
 router.post('/ml/chat', verifySession, async (req, res) => {
@@ -208,9 +212,6 @@ router.get('/admin/logs', verifySession, async (req, res) => {
 });
 
 // Test model with image
-const multer = require('multer');
-const upload = multer({ storage: multer.memoryStorage() });
-
 router.post('/ml/projects/:projectId/test', verifySession, upload.single('image'), async (req, res) => {
   try {
     const { projectId } = req.params;

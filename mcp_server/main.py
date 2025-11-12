@@ -498,13 +498,23 @@ async def test_model(project_id: str, user_id: str = Form(...), file: UploadFile
         model.to(device)
         model.eval()
         
-        # Get class labels from dataset
-        dataset = supabase.table("datasets").select("*").eq("project_id", project_id).execute()
-        if dataset.data:
-            # Try to get labels from metadata or use generic labels
+        # Get class labels - try multiple sources
+        class_labels = None
+        
+        # 1. Try from model metadata
+        if "class_labels" in model_metadata:
+            class_labels = model_metadata["class_labels"]
+            logger.info(f"Using class labels from model metadata: {class_labels}")
+        
+        # 2. Try from project metadata
+        if not class_labels and "class_labels" in project_data.get("metadata", {}):
+            class_labels = project_data["metadata"]["class_labels"]
+            logger.info(f"Using class labels from project metadata: {class_labels}")
+        
+        # 3. Fallback to generic labels
+        if not class_labels:
             class_labels = [f"Class_{i}" for i in range(num_classes)]
-        else:
-            class_labels = [f"Class_{i}" for i in range(num_classes)]
+            logger.info(f"Using generic class labels: {class_labels}")
         
         # Preprocess image
         file_bytes = await file.read()
