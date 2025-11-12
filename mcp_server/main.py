@@ -1,7 +1,7 @@
 import os
 import sys
 import logging
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Form, File, UploadFile
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
 
@@ -409,21 +409,147 @@ async def download_model(project_id: str, user_id: str):
         raise HTTPException(status_code=500, detail=f"Download failed: {str(e)}")
 
 @app.post("/api/ml/projects/{project_id}/test")
-async def test_model(project_id: str):
+async def test_model(project_id: str, user_id: str = Form(...), file: UploadFile = File(...)):
     """
     Test model with uploaded image
     """
     logger.info(f"Test request for project {project_id}")
     
     try:
-        # TODO: Implement model testing
-        # This would load the model and run inference
-        raise HTTPException(status_code=501, detail="Model testing not yet implemented")
+        from supabase_client import get_supabase_client
+        from google.cloud import storage
+        from PIL import Image
+        import io
+        import torch
+        import torch.nn as nn
+        from torchvision import models, transforms
+        import json
+        
+        supabase = get_supabase_client()
+        
+        # Convert Firebase UID to User UUID
+        user_uuid = get_user_uuid_from_firebase_uid(user_id)
+        
+        # Verify project ownership
+        project = supabase.table("projects").select("*").eq("id", project_id).eq("user_id", user_uuid).execute()
+        if not project.data:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        project_data = project.data[0]
+        
+        # Get model info
+        model_record = supabase.table("models").select("*").eq("project_id", project_id).execute()
+        if not model_record.data:
+            raise HTTPException(status_code=404, detail="No trained model found for this project")
+        
+        model_data = model_record.data[0]
+        model_url = model_data.get("gcs_url")
+        model_metadata = model_data.get("metadata", {})
+        model_architecture = model_metadata.get("architecture", "resnet18")
+        num_classes = model_metadata.get("num_classes", 2)
+        
+        logger.info(f"Loading model: {model_architecture} with {num_classes} classes")
+        
+        # Download model from GCP
+        gcp_credentials_path = settings.GOOGLE_APPLICATION_CREDENTIALS
+        if gcp_credentials_path and gcp_credentials_path.strip() and os.path.exists(gcp_credentials_path):
+            storage_client = storage.Client.from_service_account_json(gcp_credentials_path)
+        else:
+            raise HTTPException(status_code=500, detail="GCP credentials not configured")
+        
+        # Parse GCS URL
+        gcs_path = model_url.replace("gs://", "")
+        bucket_name = gcs_path.split("/")[0]
+        blob_path = "/".join(gcs_path.split("/")[1:])
+        
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(blob_path)
+        
+        # Download model to memory
+        model_bytes = io.BytesIO()
+        blob.download_to_file(model_bytes)
+        model_bytes.seek(0)
+        
+        # Load model
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        logger.info(f"Using device: {device}")
+        
+        # Create model architecture
+        if model_architecture == "resnet18":
+            model = models.resnet18(weights=None)
+            model.fc = nn.Linear(model.fc.in_features, num_classes)
+        elif model_architecture == "resnet34":
+            model = models.resnet34(weights=None)
+            model.fc = nn.Linear(model.fc.in_features, num_classes)
+        elif model_architecture == "resnet50":
+            model = models.resnet50(weights=None)
+            model.fc = nn.Linear(model.fc.in_features, num_classes)
+        elif model_architecture == "mobilenet_v2":
+            model = models.mobilenet_v2(weights=None)
+            model.classifier[1] = nn.Linear(model.classifier[1].in_features, num_classes)
+        elif model_architecture == "efficientnet_b0":
+            model = models.efficientnet_b0(weights=None)
+            model.classifier[1] = nn.Linear(model.classifier[1].in_features, num_classes)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported model architecture: {model_architecture}")
+        
+        # Load weights
+        model.load_state_dict(torch.load(model_bytes, map_location=device))
+        model.to(device)
+        model.eval()
+        
+        # Get class labels from dataset
+        dataset = supabase.table("datasets").select("*").eq("project_id", project_id).execute()
+        if dataset.data:
+            # Try to get labels from metadata or use generic labels
+            class_labels = [f"Class_{i}" for i in range(num_classes)]
+        else:
+            class_labels = [f"Class_{i}" for i in range(num_classes)]
+        
+        # Preprocess image
+        file_bytes = await file.read()
+        image = Image.open(io.BytesIO(file_bytes)).convert('RGB')
+        
+        transform = transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+        
+        img_tensor = transform(image).unsqueeze(0).to(device)
+        
+        # Run inference
+        with torch.no_grad():
+            outputs = model(img_tensor)
+            probabilities = torch.nn.functional.softmax(outputs, dim=1)
+            confidence, predicted = torch.max(probabilities, 1)
+        
+        predicted_class_idx = predicted.item()
+        confidence_score = confidence.item()
+        
+        # Get class name
+        if predicted_class_idx < len(class_labels):
+            predicted_class = class_labels[predicted_class_idx]
+        else:
+            predicted_class = f"Class_{predicted_class_idx}"
+        
+        logger.info(f"Prediction: {predicted_class} ({confidence_score:.2%})")
+        
+        return {
+            "success": True,
+            "prediction": predicted_class,
+            "class": predicted_class,
+            "confidence": confidence_score,
+            "class_index": predicted_class_idx
+        }
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error testing model: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 

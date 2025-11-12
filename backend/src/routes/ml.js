@@ -208,30 +208,34 @@ router.get('/admin/logs', verifySession, async (req, res) => {
 });
 
 // Test model with image
-router.post('/ml/projects/:projectId/test', verifySession, async (req, res) => {
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage() });
+
+router.post('/ml/projects/:projectId/test', verifySession, upload.single('image'), async (req, res) => {
   try {
     const { projectId } = req.params;
     const firebaseUid = req.user.uid;
 
     console.log(`Testing model for project ${projectId}`);
 
-    // Forward multipart form data to MCP server
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file uploaded' });
+    }
+
+    // Forward file to MCP server
     const FormData = require('form-data');
     const formData = new FormData();
     
-    if (req.files && req.files.image) {
-      formData.append('image', req.files.image.data, req.files.image.name);
-    } else if (req.file) {
-      formData.append('image', req.file.buffer, req.file.originalname);
-    }
-    
+    formData.append('file', req.file.buffer, req.file.originalname);
     formData.append('user_id', firebaseUid);
 
     const mcpResponse = await axios.post(
       `${MCP_SERVER_URL}/api/ml/projects/${projectId}/test`,
       formData,
       {
-        headers: formData.getHeaders()
+        headers: {
+          ...formData.getHeaders()
+        }
       }
     );
 
@@ -240,7 +244,7 @@ router.post('/ml/projects/:projectId/test', verifySession, async (req, res) => {
     console.error('Error testing model:', error.message);
     res.status(500).json({ 
       error: 'Failed to test model',
-      details: error.response?.data || error.message 
+      details: error.response?.data?.detail || error.message 
     });
   }
 });
