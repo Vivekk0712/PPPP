@@ -1,8 +1,46 @@
 # Dependencies
-/node_modules
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
 
 # Environment variables
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# Service account key
+# Service account key (NEVER COMMIT!)
 serviceAccount.json
+*.json
+!package.json
+!tsconfig.json
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+dist/
+build/
+
+# Testing
+coverage/
+.nyc_output/
+
+# Temporary files
+*.tmp
+*.temp

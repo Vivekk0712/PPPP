@@ -1,22 +1,47 @@
-# Firebase Auth App — Phone, Google & Email/Password with AI Chat
+# AutoML Platform — Multi-Agent Machine Learning Pipeline
 
-A full-stack authentication system with AI-powered chat functionality. Built with React (frontend), Node.js + Express (backend), Python FastAPI (MCP server), Firebase Authentication, and Supabase database. Supports Phone OTP, Google Sign-In, and Email/Password with account linking, plus a ChatGPT-style AI assistant.
+A full-stack AutoML platform with multi-agent orchestration for automated machine learning workflows. Built with React (frontend), Node.js + Express (backend), Python FastAPI (MCP server + AI agents), Firebase Authentication, and Supabase database. Features intelligent project planning, automated dataset acquisition, model training, evaluation, and testing capabilities.
 
-## Features
+## 🚀 Features
 
+### Authentication & Security
 - Phone OTP (with Firebase reCAPTCHA)
 - Google Sign-In
 - Email/Password login
 - Account linking (phone + Google + email)
 - Secure session cookies (HttpOnly, Secure, SameSite=Strict)
-- Firestore rules enforce per-user isolation
-- **AI Chat Assistant** powered by Gemini 2.5 Pro
-- **ChatGPT-style conversation management** with sidebar
-- **Conversation isolation** - each chat maintains separate context
-- **User-aware AI** - AI knows your name and profile information
-- Ready for Firebase Emulator Suite
+- Firebase UID → User UUID conversion for database operations
 
-## Prerequisites
+### AutoML Pipeline
+- **Intelligent Project Planning** - AI-powered intent parsing and project structuring
+- **Automated Dataset Acquisition** - Kaggle integration with smart search and download
+- **Model Training** - PyTorch-based training with GPU/CPU support
+- **Model Evaluation** - Comprehensive metrics and performance analysis
+- **Model Testing** - Upload images and test trained models in real-time
+
+### AI Agents (Multi-Agent Architecture)
+1. **Planner Agent (Port 8001)** - Gemini-powered project planning and intent extraction
+2. **Dataset Agent (Port 8002)** - Auto-polling Kaggle dataset search and GCP upload
+3. **Training Agent (Port 8003)** - PyTorch model training with progress tracking
+4. **Evaluation Agent (Port 8004)** - Model evaluation and metrics generation
+
+### User Interface
+- **ML Projects Dashboard** - Visual project cards with status tracking
+- **ChatGPT-style ML Chat** - Natural language ML project creation
+- **Agent Logs Viewer** - Real-time agent activity monitoring
+- **Model Testing Interface** - Upload and test images with trained models
+- **Admin Dashboard** - System-wide monitoring and management
+- **Auto-refresh** - Real-time project status updates
+
+### Advanced Features
+- **Dataset Size Limits** - Specify size constraints in natural language (e.g., "not more than 1GB")
+- **Auto-polling** - Dataset Agent automatically processes pending projects every 10 seconds
+- **Progress Tracking** - Visual progress indicators (25%, 50%, 75%, 100%)
+- **Agent Logging** - All agent activities logged to database
+- **GCP Integration** - Cloud storage for datasets and models
+- **Kaggle API** - Automated dataset search and download
+
+## 📋 Prerequisites
 
 - Node.js >= 18
 - Python 3.10+ and pip
@@ -24,6 +49,9 @@ A full-stack authentication system with AI-powered chat functionality. Built wit
 - A Supabase account (for database)
 - Firebase CLI (`npm install -g firebase-tools`)
 - Gemini API key (for AI functionality)
+- Google Cloud Platform account (for dataset/model storage)
+- Kaggle API credentials (for dataset acquisition)
+- PyTorch (CPU or GPU version depending on your hardware)
 
 ## Getting Started
 
@@ -40,16 +68,38 @@ cd my-auth-app
 
 ```bash
 # Backend
-cd backend && npm install
+cd backend
+npm install
 
 # Frontend
-cd ../frontend && npm install
+cd frontend
+npm install
 
 # MCP Server (Python)
-cd ../mcp_server
+cd mcp_server
 python -m venv venv
-source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
+
+# Planner Agent
+cd Planner-Agent/agent/planner
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+
+# Dataset Agent
+cd Dataset_Agent/agents/dataset
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+
+# Training Agent
+cd Trainer-Agent/agent
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+# For CPU: pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# For GPU: See Trainer-Agent/agent/for_NVIDIA_GPU.txt
 ```
 
 ### 3. Firebase Project Setup
@@ -99,79 +149,158 @@ pip install -r requirements.txt
 #### b. Create Database Schema
 1. In your Supabase project, go to the **SQL Editor**.
 2. Click on **New query**.
-3. Copy the entire content of the `mcp_server/db/schema.sql` file and paste it into the SQL editor.
-4. Click **Run** to execute the script. This will create the `users`, `conversations`, `messages`, and `embeddings` tables.
+3. Copy the entire content of the `schema.sql` file and paste it into the SQL editor.
+4. Click **Run** to execute the script. This will create all required tables:
+   - `users` - User profiles with Firebase UID mapping
+   - `conversations` - Chat conversation history
+   - `messages` - Individual chat messages
+   - `projects` - ML project metadata and status
+   - `datasets` - Dataset information and GCP URLs
+   - `models` - Trained model information
+   - `agent_logs` - Agent execution logs and activities
 
 ### 5. Gemini API Setup
 1. Go to the [Google AI Studio](https://aistudio.google.com/) to get your Gemini API key.
-2. Create a new API key and copy it - you'll need this for the MCP server configuration.
+2. Create a new API key and copy it - you'll need this for the MCP server and Planner Agent.
 
-### 6. Configure Environment Variables
+### 6. Google Cloud Platform Setup
+1. Create a GCP project and enable Cloud Storage API
+2. Create a storage bucket for datasets and models
+3. Download service account credentials JSON file
+4. Set `GOOGLE_APPLICATION_CREDENTIALS` environment variable to the JSON file path
 
-Create a `.env` file in the `frontend`, `backend`, and `mcp_server` directories.
+### 7. Kaggle API Setup
+1. Go to [Kaggle Account Settings](https://www.kaggle.com/settings)
+2. Click "Create New API Token" to download `kaggle.json`
+3. Extract username and key from the JSON file
+4. Add these credentials to Dataset Agent `.env` file
+
+### 8. Configure Environment Variables
+
+Create `.env` files in each service directory:
 
 **`frontend/.env`**
-```
+```env
 VITE_API_BASE_URL=http://localhost:4000
-VITE_FIREBASE_API_KEY=your-api-key-from-step-3c
+VITE_FIREBASE_API_KEY=your-api-key
 VITE_FIREBASE_AUTH_DOMAIN=your-project-id.firebaseapp.com
 VITE_FIREBASE_PROJECT_ID=your-project-id
 VITE_FIREBASE_APP_ID=your-app-id
-VITE_RECAPTCHA_SITE_KEY=your-recaptcha-site-key-from-step-3e
+VITE_RECAPTCHA_SITE_KEY=your-recaptcha-site-key
 ```
 
 **`backend/.env`**
-```
+```env
 PORT=4000
 FIREBASE_PROJECT_ID=your-project-id
 GOOGLE_APPLICATION_CREDENTIALS=./serviceAccount.json
 SESSION_COOKIE_NAME=__session
-SESSION_EXPIRES_IN=432000000   # 5 days in ms
+SESSION_EXPIRES_IN=432000000
 MCP_SERVER_URL=http://localhost:8000
 NODE_ENV=development
 ```
 
 **`mcp_server/.env`**
-```
-SUPABASE_URL=your-supabase-project-url
-SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
+```env
+SUPABASE_URL=your-supabase-url
+SUPABASE_SERVICE_ROLE_KEY=your-supabase-key
 GEMINI_API_KEY=your-gemini-api-key
+PLANNER_AGENT_URL=http://localhost:8001
+DATASET_AGENT_URL=http://localhost:8002
+TRAINING_AGENT_URL=http://localhost:8003
+EVALUATION_AGENT_URL=http://localhost:8004
 NODE_ENV=development
 ```
 
-### 7. Deploy Firestore Rules
+**`Planner-Agent/agent/planner/.env`**
+```env
+SUPABASE_URL=your-supabase-url
+SUPABASE_KEY=your-supabase-key
+GEMINI_API_KEY=your-gemini-api-key
+PORT=8001
+```
 
-To deploy the security rules for Firestore, run the following command from the root of the project:
+**`Dataset_Agent/agents/dataset/.env`**
+```env
+SUPABASE_URL=your-supabase-url
+SUPABASE_KEY=your-supabase-key
+KAGGLE_USERNAME=your-kaggle-username
+KAGGLE_KEY=your-kaggle-key
+GCP_BUCKET_NAME=your-gcp-bucket-name
+GOOGLE_APPLICATION_CREDENTIALS=path/to/gcp-credentials.json
+PORT=8002
+```
+
+**`Trainer-Agent/agent/.env`**
+```env
+SUPABASE_URL=your-supabase-url
+SUPABASE_KEY=your-supabase-key
+GCP_BUCKET_NAME=your-gcp-bucket-name
+GOOGLE_APPLICATION_CREDENTIALS=path/to/gcp-credentials.json
+PORT=8003
+```
+
+### 9. Deploy Firestore Rules
 
 ```bash
 firebase deploy --only firestore:rules
 ```
 
-## Running the Application
+## 🏃 Running the Application
 
-You need to run all three services simultaneously in separate terminals.
+You need to run all services simultaneously. Open separate terminals for each:
 
-### Start the Backend
+### Terminal 1: Backend (Node.js)
 ```bash
 cd backend
 npm run dev
 ```
-The backend server will start on `http://localhost:4000`.
+Server starts on `http://localhost:4000`
 
-### Start the MCP Server
-```bash
-cd mcp_server
-source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
-uvicorn main:app --reload
-```
-The MCP server will start on `http://localhost:8000`.
-
-### Start the Frontend
+### Terminal 2: Frontend (React)
 ```bash
 cd frontend
 npm run dev
 ```
-The frontend development server will start, usually on `http://localhost:5173`.
+Server starts on `http://localhost:5173`
+
+### Terminal 3: MCP Server (Python)
+```bash
+cd mcp_server
+source venv/bin/activate  # Windows: venv\Scripts\activate
+uvicorn main:app --reload
+```
+Server starts on `http://localhost:8000`
+
+### Terminal 4: Planner Agent
+```bash
+cd Planner-Agent/agent/planner
+source venv/bin/activate  # Windows: venv\Scripts\activate
+uvicorn main:app --reload --port 8001
+```
+Server starts on `http://localhost:8001`
+
+### Terminal 5: Dataset Agent
+```bash
+cd Dataset_Agent/agents/dataset
+source venv/bin/activate  # Windows: venv\Scripts\activate
+python main.py
+```
+Server starts on `http://localhost:8002` with auto-polling enabled
+
+### Terminal 6: Training Agent
+```bash
+cd Trainer-Agent/agent
+source venv/bin/activate  # Windows: venv\Scripts\activate
+python main.py
+```
+Server starts on `http://localhost:8003` with auto-polling enabled
+
+### Quick Start Scripts (Windows)
+```bash
+# Start all agents at once
+start-training-agent.bat
+```
 
 ### Run with Firebase Emulator
 To develop locally without connecting to your live Firebase project, you can use the Firebase Emulator Suite.
@@ -180,27 +309,66 @@ To develop locally without connecting to your live Firebase project, you can use
 firebase emulators:start --only auth,firestore
 ```
 
-## Repository Structure
+## 📁 Repository Structure
 
 ```
-/my-auth-app
-  /backend
+/automl-platform
+  /backend                          # Node.js + Express backend
     /src
-      /routes
-      /middleware
-      /services
-  /frontend
+      /routes                       # API routes (auth, ml, chat)
+      /middleware                   # Authentication middleware
+      /services                     # Business logic
+    serviceAccount.json             # Firebase admin credentials
+    
+  /frontend                         # React + Vite frontend
     /src
-      /components
+      /components                   # Reusable components
+        ChatBot.jsx                 # General AI chat
+        MLChatBot.jsx               # ML project chat
+        ModelTester.jsx             # Model testing interface
+        AgentLogsViewer.jsx         # Agent activity logs
+        ProjectCard.jsx             # Project display card
+        ProjectList.jsx             # Project grid view
       /pages
+        Dashboard.jsx               # Main dashboard
+        MLProjectsPage.jsx          # ML projects page
+        AdminDashboard.jsx          # Admin panel
       /services
-  /mcp_server
-    /tools
-    /db
-  /docs
-  README.md
-  firebase.json
-  firebase.rules
+        mlApi.js                    # ML API client
+        
+  /mcp_server                       # Python FastAPI orchestrator
+    main.py                         # MCP server entry point
+    requirements.txt                # Python dependencies
+    
+  /Planner-Agent                    # AI project planning agent
+    /agent/planner
+      main.py                       # Planner agent server
+      requirements.txt              # Dependencies
+      
+  /Dataset_Agent                    # Kaggle dataset agent
+    /agents/dataset
+      main.py                       # Dataset agent with auto-polling
+      requirements.txt              # Dependencies
+      
+  /Trainer-Agent                    # PyTorch training agent
+    /agent
+      main.py                       # Training agent with auto-polling
+      /services
+        training_service.py         # Training logic
+        evaluation_service.py       # Evaluation logic
+      requirements.txt              # Dependencies
+      for_NVIDIA_GPU.txt            # GPU setup instructions
+      
+  schema.sql                        # Complete database schema
+  firebase.json                     # Firebase configuration
+  firebase.rules                    # Firestore security rules
+  
+  # Documentation
+  QUICK_START.md                    # Quick start guide
+  SETUP_GUIDE.md                    # Detailed setup
+  TESTING_GUIDE.md                  # Testing instructions
+  FEATURES_OVERVIEW.md              # Feature documentation
+  IMPLEMENTATION_SUMMARY.md         # Implementation details
 ```
 
 ## Testing
@@ -215,26 +383,291 @@ firebase emulators:start --only auth,firestore
 - Strong password policy for email/password
 - Firestore rules prevent cross-user access
 
-## AI Chat Features
+## 🎯 How It Works
 
-- **Gemini 2.5 Pro Integration**: Powered by Google's latest AI model
-- **Conversation Management**: ChatGPT-style sidebar with conversation history
-- **Context Isolation**: Each conversation maintains separate context
-- **User Awareness**: AI knows your name and profile information
-- **Message History**: Persistent chat history stored in Supabase
-- **Real-time Chat**: Instant responses with loading indicators
-- **Fullscreen Mode**: Immersive chat experience
-- **Conversation CRUD**: Create, switch, and delete conversations
+### 1. Project Creation Flow
+```
+User Chat → Planner Agent → Project Created (pending_dataset)
+```
+- User describes ML project in natural language
+- Planner Agent extracts intent, problem type, dataset requirements
+- Creates project with status `pending_dataset`
+- Supports dataset size limits (e.g., "not more than 1GB")
 
-## Roadmap
+### 2. Dataset Acquisition Flow
+```
+Auto-polling → Kaggle Search → Download → GCP Upload → Status Update
+```
+- Dataset Agent polls every 10 seconds for `pending_dataset` projects
+- Searches Kaggle with intelligent query generation
+- Downloads dataset respecting size limits
+- Uploads to GCP bucket
+- Updates project status to `pending_training`
 
-- Password reset & email verification
-- Roles (admin/user)
-- Multi-factor auth (MFA)
-- AI conversation search and filtering
-- Message export functionality
-- Deployment (Netlify + Render/Cloud Run)
+### 3. Training Flow
+```
+Auto-polling → Download Dataset → Train Model → Upload Model → Status Update
+```
+- Training Agent polls for `pending_training` projects
+- Downloads dataset from GCP
+- Trains PyTorch model (ResNet18 for images, custom for others)
+- Uploads trained model to GCP
+- Updates project status to `pending_evaluation`
 
-## License
+### 4. Evaluation Flow
+```
+Auto-polling → Download Model → Evaluate → Generate Metrics → Complete
+```
+- Evaluation Agent polls for `pending_evaluation` projects
+- Downloads model and test data
+- Generates comprehensive metrics
+- Updates project status to `completed`
+
+### 5. Model Testing
+```
+Upload Image → Download Model → Run Inference → Display Results
+```
+- User uploads image in Model Tester
+- Backend downloads model from GCP
+- Runs inference with PyTorch
+- Returns prediction and confidence score
+
+## 🎨 User Interface Features
+
+### ML Projects Dashboard
+- Visual project cards with gradient backgrounds
+- Real-time status indicators (25%, 50%, 75%, 100%)
+- Auto-refresh every 5 seconds
+- Filter and search capabilities
+- Responsive grid layout
+
+### ML Chat Interface
+- ChatGPT-style conversation UI
+- Natural language project creation
+- Real-time agent activity updates
+- Message history persistence
+- Fullscreen mode
+
+### Agent Logs Viewer
+- Real-time agent activity monitoring
+- Color-coded log levels (info, success, error)
+- Filterable by agent type
+- Timestamp tracking
+- Auto-scroll to latest logs
+
+### Model Testing Interface
+- Drag-and-drop image upload
+- Real-time inference results
+- Confidence score visualization
+- Support for all trained models
+- Error handling and validation
+
+### Admin Dashboard
+- System-wide statistics
+- User management
+- Project monitoring
+- Agent health checks
+- Database metrics
+
+## 🧪 Testing
+
+### Manual Testing
+```bash
+# Test Planner Agent
+python test-planner.py
+
+# Test Dataset Agent
+python test-dataset-agent.py
+
+# Test complete flow
+python test-dataset-flow.py
+
+# Check database status
+python check-database-status.py
+
+# Check models
+python check-models.py
+
+# Fix stuck projects
+python fix-stuck-projects.py
+```
+
+### Health Checks
+```bash
+# Backend
+curl http://localhost:4000/health
+
+# MCP Server
+curl http://localhost:8000/health
+
+# Planner Agent
+curl http://localhost:8001/health
+
+# Dataset Agent
+curl http://localhost:8002/health
+
+# Training Agent
+curl http://localhost:8003/health
+```
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+**Dataset Agent not processing projects**
+- Check Kaggle credentials in `.env`
+- Verify GCP bucket permissions
+- Check agent logs in database
+
+**Training Agent fails**
+- Ensure PyTorch is installed correctly
+- Check GPU/CPU compatibility
+- Verify dataset format in GCP
+
+**Model testing not working**
+- Install `multer` in backend: `npm install multer`
+- Install PyTorch in MCP server
+- Check model file exists in GCP
+
+**Projects stuck in pending status**
+- Run `python fix-stuck-projects.py`
+- Check agent logs for errors
+- Verify all agents are running
+
+### Windows-Specific Issues
+- Use `venv\Scripts\activate` instead of `source venv/bin/activate`
+- Use `&` instead of `&&` in CMD commands
+- Check `start-training-agent.bat` for batch script examples
+
+## 🚀 Deployment
+
+### Frontend (Netlify/Vercel)
+```bash
+cd frontend
+npm run build
+# Deploy dist/ folder
+```
+
+### Backend (Render/Railway)
+```bash
+cd backend
+# Set environment variables
+# Deploy with Node.js 18+
+```
+
+### Python Services (Google Cloud Run)
+```bash
+# Build Docker images for each agent
+docker build -t planner-agent ./Planner-Agent/agent/planner
+docker build -t dataset-agent ./Dataset_Agent/agents/dataset
+docker build -t training-agent ./Trainer-Agent/agent
+
+# Push to container registry
+# Deploy to Cloud Run
+```
+
+## 📊 Database Schema
+
+### Core Tables
+- **users** - User profiles with Firebase UID mapping
+- **projects** - ML project metadata and status tracking
+- **datasets** - Dataset information and GCP URLs
+- **models** - Trained model metadata
+- **agent_logs** - Agent execution logs
+
+### Status Flow
+```
+pending_dataset → pending_training → pending_evaluation → completed
+```
+
+## 🔐 Security
+
+- Session cookies: HttpOnly, Secure, SameSite=Strict
+- Firebase UID → UUID conversion for all database operations
+- Row-level security in Supabase
+- GCP service account authentication
+- API key protection for Kaggle and Gemini
+- Input validation and sanitization
+
+## 📚 Documentation
+
+- **QUICK_START.md** - Get started in 5 minutes
+- **SETUP_GUIDE.md** - Detailed setup instructions
+- **TESTING_GUIDE.md** - Testing procedures
+- **FEATURES_OVERVIEW.md** - Complete feature list
+- **IMPLEMENTATION_SUMMARY.md** - Technical implementation details
+- **DATASET_SIZE_LIMIT_FEATURE.md** - Size limit feature documentation
+- **MODEL_TESTING_SETUP.md** - Model testing setup guide
+
+## 🛣️ Roadmap
+
+### Completed ✅
+- Multi-agent architecture
+- Automated dataset acquisition
+- Model training pipeline
+- Model evaluation
+- Model testing interface
+- Admin dashboard
+- Agent logging system
+- Auto-refresh UI
+- Dataset size limits
+
+### In Progress 🚧
+- Advanced model architectures
+- Hyperparameter tuning
+- Model versioning
+- Experiment tracking
+
+### Planned 📋
+- Multi-model comparison
+- AutoML hyperparameter optimization
+- Distributed training support
+- Model deployment API
+- Custom dataset upload
+- Transfer learning support
+- Model explainability tools
+- Collaborative projects
+- API rate limiting
+- Cost estimation
+- Email notifications
+
+## 🤝 Contributing
+
+Contributions are welcome! Please follow these guidelines:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Follow the coding standards in `.kiro/steering/coding-standards.md`
+4. Test your changes thoroughly
+5. Commit with conventional commits (`feat:`, `fix:`, `docs:`)
+6. Push to your branch
+7. Open a Pull Request
+
+## 📝 License
 
 MIT
+
+## 👥 Authors
+
+Built with ❤️ for the AutoML community
+
+## 🙏 Acknowledgments
+
+- Google Gemini AI for intelligent planning
+- Kaggle for dataset access
+- PyTorch for model training
+- Supabase for database
+- Firebase for authentication
+- Google Cloud Platform for storage
+
+## 📞 Support
+
+For issues and questions:
+- Check the documentation in `/docs`
+- Review troubleshooting section
+- Check agent logs in database
+- Open an issue on GitHub
+
+---
+
+**Happy AutoML-ing! 🚀🤖**

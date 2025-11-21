@@ -2,12 +2,6 @@
 .env
 .env.local
 
-# GCP Credentials (NEVER COMMIT!)
-*.json
-!requirements.txt
-credentials/
-serviceAccount.json
-
 # Python
 __pycache__/
 *.py[cod]
@@ -16,15 +10,11 @@ venv/
 env/
 .venv/
 
-# Models and data
-models/
-datasets/
-*.pth
-*.pt
-
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
 
 # OS
 .DS_Store
@@ -32,4 +22,8 @@ Thumbs.db
 
 # Logs
 *.log
+logs/
 
+# Temporary files
+*.tmp
+*.temp
